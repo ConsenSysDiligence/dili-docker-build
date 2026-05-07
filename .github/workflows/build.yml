@@ -144,3 +144,5 @@ jobs:
             dispatch_id=${{ inputs.dispatch_id }}
           # disabled until we decide whether to publish supply-chain attestations
           provenance: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
