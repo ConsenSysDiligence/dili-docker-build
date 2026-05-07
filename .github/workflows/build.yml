@@ -1,0 +1,146 @@
+# Copyright (c) 2026 Diligence Security Inc.
+# SPDX-License-Identifier: MIT
+
+name: Build and push to ECR
+
+on:
+  workflow_call:
+    inputs:
+      ecr_registry:
+        description: "ECR registry hostname, e.g. 123.dkr.ecr.eu-west-1.amazonaws.com"
+        required: true
+        type: string
+      ecr_repository:
+        description: "ECR repository path, e.g. myorg/myimage"
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region for ECR"
+        required: true
+        type: string
+      aws_role_arn:
+        description: "IAM role ARN to assume via OIDC"
+        required: true
+        type: string
+      image_tags:
+        description: "Comma-separated tags. The workflow also pushes sha-<commit> automatically."
+        required: true
+        type: string
+      dispatch_id:
+        description: "UUID from the platform, stamped as an OCI label for audit correlation"
+        required: true
+        type: string
+      build_args_json:
+        description: "JSON object of Docker build args"
+        required: false
+        type: string
+        default: "{}"
+      dockerfile:
+        description: "Dockerfile path relative to the build context"
+        required: false
+        type: string
+        default: "Dockerfile"
+      build_context:
+        description: "Build context directory"
+        required: false
+        type: string
+        default: "."
+      dry_run:
+        description: "Build but skip the push"
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build and push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC token to assume the caller-supplied ECR push role
+      contents: read # actions/checkout reads the source tree
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Validate inputs
+        env:
+          BUILD_ARGS_JSON: ${{ inputs.build_args_json }}
+          IMAGE_TAGS: ${{ inputs.image_tags }}
+        run: |
+          set -euo pipefail
+          if ! jq -e 'type == "object"' <<<"$BUILD_ARGS_JSON" >/dev/null; then
+            echo "::error::build_args_json must be a JSON object"
+            exit 1
+          fi
+          IFS=',' read -ra tags <<<"$IMAGE_TAGS"
+          for tag in "${tags[@]}"; do
+            if [ -z "$tag" ]; then
+              echo "::error::image_tags contains an empty tag"
+              exit 1
+            fi
+          done
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@19d944daaa35f0fa1d3f7f8af1d3f2e5de25c5b7 # v2.1.4
+
+      - name: Compose image references
+        id: refs
+        env:
+          ECR_REGISTRY: ${{ inputs.ecr_registry }}
+          ECR_REPOSITORY: ${{ inputs.ecr_repository }}
+          IMAGE_TAGS: ${{ inputs.image_tags }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base="${ECR_REGISTRY}/${ECR_REPOSITORY}"
+          IFS=',' read -ra tags <<<"$IMAGE_TAGS"
+          {
+            echo "tags<<EOF"
+            echo "${base}:sha-${COMMIT_SHA}"
+            for tag in "${tags[@]}"; do
+              echo "${base}:${tag}"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Compose build args
+        id: bargs
+        env:
+          BUILD_ARGS_JSON: ${{ inputs.build_args_json }}
+        run: |
+          set -euo pipefail
+          {
+            echo "args<<EOF"
+            jq -r 'to_entries[] | "\(.key)=\(.value)"' <<<"$BUILD_ARGS_JSON"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      # template-injection suppression: see .github/zizmor.yml
+      - name: Build and push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ${{ inputs.build_context }}
+          file: ${{ inputs.build_context }}/${{ inputs.dockerfile }}
+          push: ${{ !inputs.dry_run }}
+          tags: ${{ steps.refs.outputs.tags }}
+          build-args: ${{ steps.bargs.outputs.args }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.event.repository.html_url }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}/actions/runs/${{ github.run_id }}
+            dispatch_id=${{ inputs.dispatch_id }}
+          # disabled until we decide whether to publish supply-chain attestations
+          provenance: false

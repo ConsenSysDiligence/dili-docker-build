@@ -1,0 +1,11 @@
+rules:
+  template-injection:
+    ignore:
+      # `build_context` and `dockerfile` are set at compile-time by the
+      # caller stub in its own `with:` block, not from any runtime or
+      # PR-controlled source. Authority is enforced server-side: the
+      # IAM trust policy on the AWS side accepts assume-role only when
+      # `job_workflow_ref` matches this file at a specific commit SHA,
+      # so a tampered caller cannot reach ECR regardless of what these
+      # path strings expand to.
+      - build.yml:135:24
