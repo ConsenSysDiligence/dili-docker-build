@@ -8,4 +8,4 @@ rules:
       # `job_workflow_ref` matches this file at a specific commit SHA,
       # so a tampered caller cannot reach ECR regardless of what these
       # path strings expand to.
-      - build.yml:135:24
+      - build.yml:151:24
