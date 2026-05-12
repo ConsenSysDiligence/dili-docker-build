@@ -45,6 +45,15 @@ on:
         required: false
         type: string
         default: "."
+      extra_context_artifact:
+        description: |
+          Optional name of an actions artifact to hydrate into build_context
+          after checkout. Lets the caller stage files (e.g. credentialed
+          fetches from private repos) without exposing secrets to the
+          dockerfile or the resulting image.
+        required: false
+        type: string
+        default: ""
       dry_run:
         description: "Build but skip the push"
         required: false
@@ -65,6 +74,13 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
+
+      - name: Hydrate build context from artifact
+        if: inputs.extra_context_artifact != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ inputs.extra_context_artifact }}
+          path: ${{ inputs.build_context }}
 
       - name: Validate inputs
         env:
