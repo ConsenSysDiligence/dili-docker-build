@@ -115,14 +115,12 @@ jobs:
           ECR_REGISTRY: ${{ inputs.ecr_registry }}
           ECR_REPOSITORY: ${{ inputs.ecr_repository }}
           IMAGE_TAGS: ${{ inputs.image_tags }}
-          COMMIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           base="${ECR_REGISTRY}/${ECR_REPOSITORY}"
           IFS=',' read -ra tags <<<"$IMAGE_TAGS"
           {
             echo "tags<<EOF"
-            echo "${base}:sha-${COMMIT_SHA}"
             for tag in "${tags[@]}"; do
               echo "${base}:${tag}"
             done
