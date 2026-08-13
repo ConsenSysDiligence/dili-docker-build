@@ -23,7 +23,7 @@ on:
         required: true
         type: string
       image_tags:
-        description: "Comma-separated tags. The workflow also pushes sha-<commit> automatically."
+        description: "Comma-separated tags. Exactly these are pushed; compose your own immutable tag if you want one."
         required: true
         type: string
       dispatch_id:
