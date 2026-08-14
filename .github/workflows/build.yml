@@ -82,6 +82,14 @@ jobs:
           name: ${{ inputs.extra_context_artifact }}
           path: ${{ inputs.build_context }}
 
+      - name: Free disk space
+        run: |
+          set -euo pipefail
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          docker image prune --all --force
+          echo "after:"; df -h / | tail -1
+
       - name: Validate inputs
         env:
           BUILD_ARGS_JSON: ${{ inputs.build_args_json }}
